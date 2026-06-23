@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Phần mềm phát hiện xung đột thủ thuật - Chi tiết lỗi & Filter</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
+    <script src="app.js" defer></script>
+</head>
+<body>
+<div class="app-container">
+    <div class="header">
+        <h1>📋 BS THÀNH - CHECK TRÙNG GIỜ THỦ THUẬT - TRÙNG MÁY (Có chi tiết lỗi + Filter)</h1>
+    </div>
+    <div class="content">
+        <div class="toolbar">
+            <div class="file-area">
+                <label class="file-label">
+                    📂 Chọn file Excel (.xlsx, .xls)
+                    <input type="file" id="excelFile" accept=".xlsx, .xls" style="display:none">
+                </label>
+                <div class="status" id="fileStatus">Chưa có dữ liệu</div>
+                <div class="status" id="rowCount">0 bản ghi</div>
+            </div>
+            <button class="btn btn-primary" id="filterDoctorBtn">👩‍⚕️ Xung đột BÁC SĨ</button>
+            <button class="btn btn-primary" id="filterMachineTimeBtn">🖥️ Xung đột MÁY (thời gian)</button>
+            <button class="btn btn-primary" id="filterMachineAllowedBtn">🔧 Máy không được phép</button>
+            <button class="btn btn-outline" id="showAllBtn">📋 Hiển thị tất cả</button>
+            <button class="btn btn-primary" id="filterAllBtn">🔍 Lọc tổng hợp</button>
+            <button class="btn btn-outline" id="exportReportBtn">📎 Xuất báo cáo Excel</button>
+            <button class="btn btn-outline" id="openChartBtn">📊 Xem biểu đồ</button>
+            <button class="btn btn-outline" id="filterSequenceBtn">📝 Trình tự sai</button>
+            <button class="btn btn-outline" id="filterEvolutionBtn">🔄 Diễn biến sai</button>
+            <button class="btn btn-outline" id="filterAssistantBtn">👥 Thiếu người phụ</button>
+            <button class="btn btn-outline" id="filterDurationBtn">⏱️ Thời gian sai</button>
+            <button class="btn btn-outline" id="openConfigBtn">⚙️ Cấu hình hệ thống</button>
+        </div>
+
+        <div class="stats" id="statsArea">
+            📌 Hướng dẫn: Tải file → bấm nút lọc. Trên mỗi cột có dropdown lọc theo giá trị duy nhất.
+        </div>
+
+        <div class="table-wrapper">
+            <table id="dataTable">
+                <thead id="tableHeader"></thead>
+                <tbody id="tableBody">
+                    <tr><td colspan="14" class="empty-msg">📂 Hãy tải file Excel để bắt đầu</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="footer-note">
+            <strong>Viết bởi bác sỹ Thành</strong><br>
+            🖍️ Các cột <strong>Bác sỹ thủ thuật</strong>, <strong>Máy TH</strong>, <strong>Phương pháp thủ thuật</strong> được in đậm.<br>
+            💡 Kích đúp vào ô dữ liệu để xem nội dung đầy đủ.<br>
+            🔍 Gõ từ khóa vào ô dưới tiêu đề cột để lọc dữ liệu.
+        </div>
+    </div>
+</div>
+
+<!-- Modal biểu đồ -->
+<div id="chartModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>📈 Biểu đồ thời gian thủ thuật</h2>
+            <span class="close">&times;</span>
+        </div>
+        <div class="modal-body">
+            <div class="chart-controls">
+                <div class="chart-select-group">
+                    <label>Xem theo:</label>
+                    <select id="modalChartType">
+                        <option value="doctor">👨‍⚕️ Bác sĩ</option>
+                        <option value="machine">🖥️ Máy</option>
+                    </select>
+                    <select id="modalPersonSelect" style="min-width: 200px;">
+                        <option value="">-- Chọn --</option>
+                    </select>
+                    <label>Ca làm việc:</label>
+                    <select id="modalShiftSelect">
+                        <option value="winter">❄️ Mùa đông (7:30-12:00, 13:00-16:30)</option>
+                        <option value="summer">☀️ Mùa hè (7:00-11:30, 13:30-17:00)</option>
+                    </select>
+                    <button class="btn btn-outline" id="drawChartBtn">Vẽ biểu đồ</button>
+                </div>
+            </div>
+            <div id="timelineTableContainer" class="timeline-table-container" style="overflow: auto; max-height: 500px; border: 1px solid #ccc;"></div>
+            <div id="chartMessage" style="text-align:center; padding:40px; display: none;">Chọn đối tượng và nhấn Vẽ biểu đồ</div>
+            <div id="modalFreeTimeInfo" class="free-time-info"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal cấu hình hệ thống -->
+<div id="configModal" class="modal">
+    <div class="modal-content config-modal">
+        <div class="modal-header">
+            <h2>⚙️ Cấu hình hệ thống</h2>
+            <span class="close-config">&times;</span>
+        </div>
+        <div class="modal-body">
+            <!-- Ánh xạ cột -->
+            <div class="config-section">
+                <h3>🗂️ Ánh xạ cột dữ liệu</h3>
+                <div class="mapping-grid">
+                    <div class="setting-item"><label>📌 STT</label><select id="colStt"></select></div>
+                    <div class="setting-item"><label>🆔 Mã KCB</label><select id="colMaKCB"></select></div>
+                    <div class="setting-item"><label>👤 Họ tên</label><select id="colHoTen"></select></div>
+                    <div class="setting-item"><label>🎂 Tuổi</label><select id="colTuoi"></select></div>
+                    <div class="setting-item"><label>🏠 Địa chỉ</label><select id="colDiaChi"></select></div>
+                    <div class="setting-item"><label>💉 Phương pháp thủ thuật</label><select id="colPhuongPhap"></select></div>
+                    <div class="setting-item"><label>📝 Trình tự</label><select id="colTrinhTu"></select></div>
+                    <div class="setting-item"><label>🩺 Chẩn đoán</label><select id="colChanDoan"></select></div>
+                    <div class="setting-item"><label>📋 Diễn biến</label><select id="colDienBien"></select></div>
+                    <div class="setting-item"><label>⏰ Ngày giờ bắt đầu</label><select id="colStartTime"></select></div>
+                    <div class="setting-item"><label>⏱️ Ngày giờ kết thúc</label><select id="colEndTime"></select></div>
+                    <div class="setting-item"><label>👨‍⚕️ Bác sỹ thủ thuật</label><select id="colDoctor"></select></div>
+                    <div class="setting-item"><label>👥 Bác sĩ phụ</label><select id="colAssistantDoctor"></select></div>
+                    <div class="setting-item"><label>🖨️ Máy TH</label><select id="colMachine"></select></div>
+                </div>
+            </div>
+
+            <!-- Thời gian gối (linh hoạt) -->
+            <div class="config-section">
+                <h3>⏱️ Thời gian gối (phút) – có thể thêm/sửa/xóa</h3>
+                <div class="config-controls">
+                    <div class="config-list" id="thresholdConfigList"></div>
+                    <div class="add-config">
+                        <input type="text" id="newThresholdKeyword" placeholder="Từ khóa thủ thuật (VD: điện châm)">
+                        <input type="number" id="newThresholdMinutes" placeholder="Số phút" step="1">
+                        <button class="btn btn-sm" id="addThresholdBtn">➕ Thêm</button>
+                    </div>
+                    <button class="save-mapping" id="saveThresholdConfigBtn">💾 Lưu cấu hình gối</button>
+                </div>
+                <div class="note" style="font-size:0.75rem; color:#666; margin-top:8px;">📌 Áp dụng cho thủ thuật chứa từ khóa (không phân biệt hoa thường).</div>
+            </div>
+
+            <!-- Cấu hình máy cho phép theo thủ thuật -->
+            <div class="config-section">
+                <h3>🖨️ Cấu hình máy cho phép theo thủ thuật</h3>
+                <div class="config-controls">
+                    <button class="btn btn-sm" id="importMachineMappingBtn">📂 Import Excel</button>
+                    <div class="config-list" id="machineMappingList"></div>
+                    <div class="add-config">
+                        <input type="text" id="newMachineKeyword" placeholder="Từ khóa thủ thuật (VD: điện châm)">
+                        <input type="text" id="newMachineList" placeholder="Máy cho phép (cách nhau dấu phẩy)">
+                        <button class="btn btn-sm" id="addMachineMappingBtn">➕ Thêm</button>
+                    </div>
+                    <button class="save-mapping" id="saveMachineMappingBtn">💾 Lưu cấu hình máy</button>
+                </div>
+                <div class="note" style="font-size:0.75rem; color:#666; margin-top:8px;">📌 Ví dụ: từ khóa "điện châm" → máy "2303-2112,2303-2108". Kiểm tra máy thực tế có chứa một trong các chuỗi này.</div>
+            </div>
+
+            <!-- Cấu hình công suất máy (mới) -->
+            <div class="config-section">
+                <h3>⚡ Công suất máy (số ca tối đa cùng lúc)</h3>
+                <div class="config-controls">
+                    <div class="config-list" id="machineCapacityList"></div>
+                    <div class="add-config">
+                        <input type="text" id="newCapacityKeyword" placeholder="Từ khóa máy (VD: giao thoa)">
+                        <input type="number" id="newCapacityValue" placeholder="Công suất (mặc định 1)" min="1" step="1">
+                        <button class="btn btn-sm" id="addCapacityBtn">➕ Thêm</button>
+                    </div>
+                    <button class="save-mapping" id="saveCapacityBtn">💾 Lưu công suất máy</button>
+                </div>
+                <div class="note" style="font-size:0.75rem; color:#666; margin-top:8px;">📌 Máy sẽ được nhận diện bằng từ khóa (includes). Nếu không có cấu hình, mặc định công suất = 1.</div>
+            </div>
+
+            <!-- Cấu hình thời gian chuẩn (giữ nguyên) -->
+            <div class="config-section">
+                <h3>⏱️ Thời gian chuẩn cho thủ thuật (phút)</h3>
+                <div class="config-controls">
+                    <button class="btn btn-sm" id="importDurationBtn">📂 Import Excel</button>
+                    <div class="config-list" id="durationConfigList"></div>
+                    <div class="add-config">
+                        <input type="text" id="newDurationKeyword" placeholder="Từ khóa thủ thuật (VD: điện châm)">
+                        <input type="number" id="newDurationMinutes" placeholder="Số phút yêu cầu" step="1">
+                        <button class="btn btn-sm" id="addDurationBtn">➕ Thêm</button>
+                    </div>
+                    <button class="save-mapping" id="saveDurationConfigBtn">💾 Lưu cấu hình thời gian</button>
+                </div>
+                <div class="note" style="font-size:0.75rem; color:#666; margin-top:8px;">📌 Ghi chú: Thủ thuật sẽ được áp dụng theo từ khóa đầu tiên khớp (không phân biệt hoa thường). Nếu không khớp từ khóa nào thì bỏ qua kiểm tra.</div>
+            </div>
+
+            <!-- Cấu hình trình tự (giữ nguyên) -->
+            <div class="config-section">
+                <h3>📑 Cấu hình trình tự thủ thuật</h3>
+                <div class="config-controls">
+                    <button class="btn btn-sm" id="importSequenceBtn">📂 Import Excel</button>
+                    <div class="config-list" id="sequenceConfigList"></div>
+                    <div class="add-config">
+                        <input type="text" id="newSeqName" placeholder="Tên thủ thuật">
+                        <input type="text" id="newSeqKw" placeholder="Từ khóa (cách nhau dấu phẩy)">
+                        <button class="btn btn-sm" id="addSequenceBtn">➕ Thêm</button>
+                    </div>
+                    <button class="save-mapping" id="saveSequenceConfigBtn">💾 Lưu cấu hình trình tự</button>
+                </div>
+            </div>
+
+            <!-- Cấu hình diễn biến (giữ nguyên) -->
+            <div class="config-section">
+                <h3>🔄 Cấu hình diễn biến theo bệnh</h3>
+                <div class="config-controls">
+                    <button class="btn btn-sm" id="importEvolutionBtn">📂 Import Excel</button>
+                    <div class="config-list" id="evolutionConfigList"></div>
+                    <div class="add-config">
+                        <input type="text" id="newEvoDisease" placeholder="Tên bệnh">
+                        <input type="text" id="newEvoKw" placeholder="Từ khóa (cách nhau dấu phẩy)">
+                        <button class="btn btn-sm" id="addEvolutionBtn">➕ Thêm</button>
+                    </div>
+                    <button class="save-mapping" id="saveEvolutionConfigBtn">💾 Lưu cấu hình diễn biến</button>
+                </div>
+            </div>
+
+            <div style="margin-top: 20px; text-align: right;">
+                <button class="btn btn-primary" id="saveAllConfigBtn">💾 Lưu tất cả cài đặt</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal xem chi tiết cell -->
+<div id="cellDetailModal" class="modal">
+    <div class="modal-content small-modal">
+        <div class="modal-header">
+            <h2>📄 Nội dung chi tiết</h2>
+            <span class="close-cell">&times;</span>
+        </div>
+        <div class="modal-body">
+            <div id="cellDetailContent" style="white-space: pre-wrap; word-break: break-word;"></div>
+        </div>
+    </div>
+</div>
+
+</body>
+</html>
